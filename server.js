@@ -91,6 +91,7 @@ app.get("/health", (req, res) => {
     res.status(200).json({
         status: "alive",
         database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+        mongo_url_exists: !!process.env.MONGO_URL,
         vercel: !!process.env.VERCEL,
         env: process.env.NODE_ENV
     });
