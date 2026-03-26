@@ -25,13 +25,13 @@ const allowedOrigins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "https://frontend-gallery.vercel.app",
-    "https://frontend-gallery-beta.vercel.app"
+    "https://frontend-gallery-delta.vercel.app/"
 ];
 
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin) return callback(null, true);
-        
+
         const isVercel = origin.endsWith('.vercel.app');
         const isAllowed = allowedOrigins.includes(origin);
 
