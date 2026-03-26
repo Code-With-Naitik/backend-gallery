@@ -19,12 +19,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const allowedOrigins = [
-  "http://localhost:5174", 
-  "http://127.0.0.1:5174", 
-  "http://localhost:5173", 
-  "http://127.0.0.1:5173", 
-  "http://localhost:3000",
-  "https://frontend-gallery.vercel.app" // Placeholder/User frontend
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "https://frontend-gallery-beta.vercel.app"
 ];
 app.use(cors({
     origin: function (origin, callback) {
@@ -245,7 +245,7 @@ app.patch("/auth/users/:id/status", authenticateToken, async (req, res) => {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Access denied." });
         const { status } = req.body;
         if (!['active', 'pending'].includes(status)) return res.status(400).json({ error: "Invalid status protocol." });
-        
+
         const updatedUser = await User.findByIdAndUpdate(req.params.id, { status }, { new: true });
         if (!updatedUser) return res.status(404).json({ error: "User not found." });
         res.status(200).json({ message: "Identity status protocol updated.", status: updatedUser.status });
