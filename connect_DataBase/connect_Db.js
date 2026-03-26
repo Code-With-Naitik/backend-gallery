@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 
+let lastError = null;
+export const getLastError = () => lastError;
+
 const Connect_Db = async () => {
     if (!process.env.MONGO_URL) {
         console.error("MONGO_URL is not defined in environment variables!");
@@ -18,6 +21,7 @@ const Connect_Db = async () => {
             // Index likely already gone or doesn't exist
         }
     } catch (error) {
+        lastError = error.message;
         console.log(error);
     }
 }
