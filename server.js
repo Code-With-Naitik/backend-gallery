@@ -49,7 +49,9 @@ if (!fs.existsSync(uploadDir) && !process.env.VERCEL) {
 // Multer Config
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        // Vercel only allows writing to /tmp
+        const dest = process.env.VERCEL ? '/tmp' : 'uploads/';
+        cb(null, dest);
     },
     filename: (req, file, cb) => {
         cb(null, Date.now() + path.extname(file.originalname));
@@ -57,7 +59,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-Connect_Db();
+// Connect to DB (don't block invocation if it fails)
+Connect_Db().catch(err => console.error("Initial DB connection failed:", err));
 
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {

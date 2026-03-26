@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 
 const Connect_Db = async () => {
+    if (!process.env.MONGO_URL) {
+        console.error("MONGO_URL is not defined in environment variables!");
+        return;
+    }
     try {
         await mongoose.connect(process.env.MONGO_URL);
         console.log("Connected to MongoDB");
