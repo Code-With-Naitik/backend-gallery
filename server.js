@@ -8,7 +8,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from 'url';
-import Connect_Db from "./Connect_DataBase/Connect_Db.js";
+import Connect_Db from "./connect_DataBase/connect_Db.js";
 import Category from "./model/category_model.js";
 import User from "./model/user_model.js";
 import Admin from "./model/admin_model.js";
