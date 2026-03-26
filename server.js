@@ -424,7 +424,7 @@ app.post("/api/upload", upload.single('image'), (req, res) => {
 });
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    const PORT = process.env.PORT || 8080;
+    const PORT = process.env.PORT || 8001;
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });
