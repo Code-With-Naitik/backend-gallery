@@ -27,12 +27,18 @@ const allowedOrigins = [
     "https://frontend-gallery.vercel.app",
     "https://frontend-gallery-beta.vercel.app"
 ];
+
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        if (!origin) return callback(null, true);
+        
+        const isVercel = origin.endsWith('.vercel.app');
+        const isAllowed = allowedOrigins.includes(origin);
+
+        if (isAllowed || isVercel) {
             callback(null, true);
         } else {
-            callback(new Error("Not allowed by CORS"));
+            callback(new Error(`Not allowed by CORS: ${origin}`));
         }
     },
     credentials: true,
@@ -79,6 +85,15 @@ const authenticateToken = (req, res, next) => {
 
 app.get("/", (req, res) => {
     res.send("Hello World!");
+});
+
+app.get("/health", (req, res) => {
+    res.status(200).json({
+        status: "alive",
+        database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+        vercel: !!process.env.VERCEL,
+        env: process.env.NODE_ENV
+    });
 });
 
 // AUTH ROUTES

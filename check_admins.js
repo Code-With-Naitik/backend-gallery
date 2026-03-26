@@ -7,10 +7,12 @@ dotenv.config();
 const count = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URL);
-        const adminCount = await Admin.countDocuments();
-        console.log(`TOTAL_ADMINS:${adminCount}`);
+        const admins = await Admin.find({}, 'email username');
+        console.log(`TOTAL_ADMINS:${admins.length}`);
+        admins.forEach(a => console.log(`ADMIN_EMAIL:${a.email}`));
         process.exit();
     } catch (err) {
+        console.error("DB_ERROR:", err.message);
         process.exit(1);
     }
 };
