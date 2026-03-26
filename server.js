@@ -87,7 +87,11 @@ app.get("/", (req, res) => {
     res.send("Hello World!");
 });
 
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
+    if (mongoose.connection.readyState !== 1) {
+        await Connect_Db();
+    }
+    
     res.status(200).json({
         status: "alive",
         database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
