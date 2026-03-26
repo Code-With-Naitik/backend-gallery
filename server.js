@@ -18,7 +18,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const allowedOrigins = ["http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"];
+const allowedOrigins = [
+  "http://localhost:5174", 
+  "http://127.0.0.1:5174", 
+  "http://localhost:5173", 
+  "http://127.0.0.1:5173", 
+  "http://localhost:3000",
+  "https://frontend-gallery.vercel.app" // Placeholder/User frontend
+];
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -34,9 +41,10 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
+if (!fs.existsSync(uploadDir) && !process.env.VERCEL) {
     fs.mkdirSync(uploadDir);
 }
+// For Vercel, use /tmp if writing is necessary, but static uploads won't persist across requests.
 
 // Multer Config
 const storage = multer.diskStorage({
@@ -412,6 +420,11 @@ app.post("/api/upload", upload.single('image'), (req, res) => {
     res.json({ imageUrl });
 });
 
-app.listen(8080, () => {
-    console.log("Server is running on port 8080");
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
+
+export default app;
