@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const allowedOrigins = [
     "http://localhost:5174",
-    "http://127.0.0.1:5174",
+    "http://192.168.29.213:5174",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
@@ -91,7 +91,7 @@ app.get("/health", async (req, res) => {
     if (mongoose.connection.readyState !== 1) {
         await Connect_Db();
     }
-    
+
     res.status(200).json({
         status: "alive",
         database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
@@ -441,7 +441,9 @@ app.post("/api/upload", upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
     }
-    const imageUrl = `http://localhost:8080/uploads/${req.file.filename}`;
+    const host = req.get('host');
+    const protocol = req.protocol;
+    const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     res.json({ imageUrl });
 });
 

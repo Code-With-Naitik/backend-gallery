@@ -4,12 +4,15 @@ let lastError = null;
 export const getLastError = () => lastError;
 
 const Connect_Db = async () => {
-    if (!process.env.MONGO_URL) {
+    let url = (process.env.MONGO_URL || "").trim();
+    if (url.startsWith("'") || url.startsWith('"')) url = url.slice(1, -1);
+    
+    if (!url) {
         console.error("MONGO_URL is not defined in environment variables!");
         return;
     }
     try {
-        await mongoose.connect(process.env.MONGO_URL);
+        await mongoose.connect(url);
         console.log("Connected to MongoDB");
 
         // One-time cleanup of problematic stale index
