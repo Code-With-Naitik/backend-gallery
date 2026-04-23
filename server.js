@@ -19,10 +19,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const allowedOrigins = [
+    "http://localhost:5175",
+    "http://192.168.29.213:5175",
     "http://localhost:5174",
-    "http://192.168.29.213:5174",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
     "http://localhost:3000",
     "https://frontend-gallery.vercel.app",
     "https://frontend-gallery-delta.vercel.app/"
@@ -289,12 +289,32 @@ app.delete("/auth/user", authenticateToken, async (req, res) => {
     }
 });
 
+const transformImageUrl = (url, req) => {
+    if (!url) return url;
+    // Already an external/cloud URL (not a local upload) — leave as-is
+    if (url.startsWith('http') && !url.includes('/uploads/')) return url;
+    // Extract just the path portion from any absolute URL that points to /uploads/
+    let pathname = url;
+    if (url.startsWith('http')) {
+        try { pathname = new URL(url).pathname; } catch { return url; }
+    }
+    // Now build the correct absolute URL using the current request's host
+    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    return `${protocol}://${host}${pathname}`;
+};
+
 // CATEGORY ROUTES
 // GET all categories (Public)
 app.get("/category", async (req, res) => {
     try {
         const categories = await Category.find();
-        res.status(200).json(categories);
+        const transformedCategories = categories.map(cat => {
+            const obj = cat.toObject();
+            if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
+            return obj;
+        });
+        res.status(200).json(transformedCategories);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -309,7 +329,10 @@ app.get("/category/:id", async (req, res) => {
 
         const category = await Category.findOne(query);
         if (!category) return res.status(404).json({ error: "Prompt not found" });
-        res.status(200).json(category);
+
+        const obj = category.toObject();
+        if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
+        res.status(200).json(obj);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -375,7 +398,15 @@ app.get("/wishlist", authenticateToken, async (req, res) => {
             wishlist = new Wishlist({ userId: req.user.id, items: [] });
             await wishlist.save();
         }
-        res.status(200).json(wishlist.items);
+
+        const transformedItems = (wishlist.items || []).map(item => {
+            if (!item) return item;
+            const obj = typeof item.toObject === 'function' ? item.toObject() : item;
+            if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
+            return obj;
+        });
+
+        res.status(200).json(transformedItems);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -416,7 +447,15 @@ app.post("/wishlist/toggle", authenticateToken, async (req, res) => {
 
         await wishlist.save();
         const updatedWishlist = await Wishlist.findOne({ userId: req.user.id }).populate('items');
-        res.status(200).json(updatedWishlist.items || []);
+
+        const transformedItems = (updatedWishlist.items || []).map(item => {
+            if (!item) return item;
+            const obj = typeof item.toObject === 'function' ? item.toObject() : item;
+            if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
+            return obj;
+        });
+
+        res.status(200).json(transformedItems);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -437,13 +476,13 @@ app.delete("/wishlist", authenticateToken, async (req, res) => {
 });
 
 // UPLOAD ROUTE
+// Returns only the relative path so it works across all devices (mobile, web, etc.)
 app.post("/api/upload", upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
     }
-    const host = req.get('host');
-    const protocol = req.protocol;
-    const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    // Store relative path — transformImageUrl will resolve to full URL on every GET
+    const imageUrl = `/uploads/${req.file.filename}`;
     res.json({ imageUrl });
 });
 
