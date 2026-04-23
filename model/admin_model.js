@@ -18,6 +18,10 @@ const adminSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    profilePic: {
+        type: String,
+        default: ''
+    },
 }, {
     timestamps: true,
     toJSON: {

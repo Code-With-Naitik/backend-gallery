@@ -106,9 +106,9 @@ app.get("/health", async (req, res) => {
 // Register
 app.post("/auth/register", async (req, res) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, email, password, role } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, email, password: hashedPassword });
+        const newUser = new User({ username, email, password: hashedPassword, role: role || 'user' });
         await newUser.save();
         res.status(201).json({ message: "User registered successfully" });
     } catch (error) {
@@ -139,8 +139,8 @@ app.post("/auth/login", async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: "Invalid password" });
 
-        const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET, { expiresIn: '1d' });
-        res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
+        const token = jwt.sign({ id: user._id, username: user.username, role: user.role || 'user' }, process.env.JWT_SECRET, { expiresIn: '1d' });
+        res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role || 'user' } });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -157,7 +157,13 @@ app.post("/auth/admin/login", async (req, res) => {
         if (!validPassword) return res.status(400).json({ error: "Admin credential failure." });
 
         const token = jwt.sign({ id: admin._id, username: admin.username, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '1d' });
-        res.json({ token, user: { id: admin._id, username: admin.username, email: admin.email, role: 'admin' } });
+        res.json({ token, user: { 
+            id: admin._id, 
+            username: admin.username, 
+            email: admin.email, 
+            role: 'admin',
+            profilePic: admin.profilePic || ''
+        } });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -229,11 +235,37 @@ app.delete("/auth/admin", authenticateToken, async (req, res) => {
     }
 });
 
+// UPDATE Admin (Protected)
+app.put("/auth/admin", authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized access." });
+        const { username, email, profilePic } = req.body;
+
+        const updateFields = {};
+        if (username) updateFields.username = username;
+        if (email) updateFields.email = email.toLowerCase();
+        if (profilePic !== undefined) updateFields.profilePic = profilePic;
+
+        const updatedAdmin = await Admin.findByIdAndUpdate(req.user.id, updateFields, { new: true });
+        if (!updatedAdmin) return res.status(404).json({ error: "Admin registry not found." });
+
+        res.json({ 
+            id: updatedAdmin._id, 
+            username: updatedAdmin.username, 
+            email: updatedAdmin.email, 
+            role: 'admin',
+            profilePic: updatedAdmin.profilePic || ''
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET all users (Protected - Admin only)
 app.get("/auth/users", authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Access denied." });
-        const users = await User.find({}, 'username email createdAt updatedAt uid status');
+        const users = await User.find({}, 'username email createdAt updatedAt uid status role');
         // Standardize returning uid as id for consistency with frontend
         const formattedUsers = users.map(u => ({
             id: u.uid || u._id,
@@ -241,6 +273,7 @@ app.get("/auth/users", authenticateToken, async (req, res) => {
             username: u.username,
             email: u.email,
             status: u.status || 'active',
+            role: u.role || 'user',
             createdAt: u.createdAt
         }));
         res.status(200).json(formattedUsers);
@@ -271,6 +304,21 @@ app.patch("/auth/users/:id/status", authenticateToken, async (req, res) => {
         const updatedUser = await User.findByIdAndUpdate(req.params.id, { status }, { new: true });
         if (!updatedUser) return res.status(404).json({ error: "User not found." });
         res.status(200).json({ message: "Identity status protocol updated.", status: updatedUser.status });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// UPDATE User Role (Protected - Admin only)
+app.patch("/auth/users/:id/role", authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Access denied." });
+        const { role } = req.body;
+        if (!['admin', 'user'].includes(role)) return res.status(400).json({ error: "Invalid role protocol." });
+
+        const updatedUser = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
+        if (!updatedUser) return res.status(404).json({ error: "User not found." });
+        res.status(200).json({ message: "Identity role protocol updated.", role: updatedUser.role });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
