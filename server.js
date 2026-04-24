@@ -19,10 +19,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const allowedOrigins = [
-    "http://localhost:5175",
-    "http://192.168.29.213:5175",
     "http://localhost:5174",
-    "http://127.0.0.1:5174",
+    "http://192.168.29.213:5174",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:3000",
     "https://frontend-gallery.vercel.app",
     "https://frontend-gallery-delta.vercel.app/"
@@ -43,7 +43,8 @@ app.use(cors({
     },
     credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Ensure uploads directory exists
@@ -150,20 +151,30 @@ app.post("/auth/login", async (req, res) => {
 app.post("/auth/admin/login", async (req, res) => {
     try {
         const { email, password } = req.body;
-        const admin = await Admin.findOne({ email });
+
+        let admin = await Admin.findOne({ email });
+        let isTrueAdmin = true;
+
+        if (!admin) {
+            admin = await User.findOne({ email, role: 'admin' });
+            isTrueAdmin = false;
+        }
+
         if (!admin) return res.status(400).json({ error: "Admin credential failure." });
 
         const validPassword = await bcrypt.compare(password, admin.password);
         if (!validPassword) return res.status(400).json({ error: "Admin credential failure." });
 
         const token = jwt.sign({ id: admin._id, username: admin.username, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '1d' });
-        res.json({ token, user: { 
-            id: admin._id, 
-            username: admin.username, 
-            email: admin.email, 
-            role: 'admin',
-            profilePic: admin.profilePic || ''
-        } });
+        res.json({
+            token, user: {
+                id: admin._id,
+                username: admin.username,
+                email: admin.email,
+                role: 'admin',
+                profilePic: admin.profilePic || ''
+            }
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -249,10 +260,10 @@ app.put("/auth/admin", authenticateToken, async (req, res) => {
         const updatedAdmin = await Admin.findByIdAndUpdate(req.user.id, updateFields, { new: true });
         if (!updatedAdmin) return res.status(404).json({ error: "Admin registry not found." });
 
-        res.json({ 
-            id: updatedAdmin._id, 
-            username: updatedAdmin.username, 
-            email: updatedAdmin.email, 
+        res.json({
+            id: updatedAdmin._id,
+            username: updatedAdmin.username,
+            email: updatedAdmin.email,
             role: 'admin',
             profilePic: updatedAdmin.profilePic || ''
         });
@@ -266,8 +277,11 @@ app.get("/auth/users", authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Access denied." });
         const users = await User.find({}, 'username email createdAt updatedAt uid status role');
-        // Standardize returning uid as id for consistency with frontend
-        const formattedUsers = users.map(u => ({
+        const admins = await Admin.find({}, 'username email createdAt updatedAt uid');
+
+        let allUsers = [];
+
+        users.forEach(u => allUsers.push({
             id: u.uid || u._id,
             mongoId: u._id,
             username: u.username,
@@ -276,7 +290,21 @@ app.get("/auth/users", authenticateToken, async (req, res) => {
             role: u.role || 'user',
             createdAt: u.createdAt
         }));
-        res.status(200).json(formattedUsers);
+
+        admins.forEach(a => allUsers.push({
+            id: a.uid || a._id,
+            mongoId: a._id,
+            username: a.username,
+            email: a.email,
+            status: 'active', // Admins are always active
+            role: 'admin', // True Admins are admins
+            createdAt: a.createdAt
+        }));
+
+        // Sort descending by creation date
+        allUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.status(200).json(allUsers);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -339,13 +367,16 @@ app.delete("/auth/user", authenticateToken, async (req, res) => {
 
 const transformImageUrl = (url, req) => {
     if (!url) return url;
-    // Already an external/cloud URL (not a local upload) — leave as-is
-    if (url.startsWith('http') && !url.includes('/uploads/')) return url;
-    // Extract just the path portion from any absolute URL that points to /uploads/
+    // Only transform if it's a local upload
     let pathname = url;
     if (url.startsWith('http')) {
         try { pathname = new URL(url).pathname; } catch { return url; }
     }
+
+    if (!pathname.startsWith('/uploads/')) {
+        return url; // External URL or data URI, leave as-is
+    }
+
     // Now build the correct absolute URL using the current request's host
     const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
     const host = req.headers['x-forwarded-host'] || req.get('host');
@@ -524,14 +555,23 @@ app.delete("/wishlist", authenticateToken, async (req, res) => {
 });
 
 // UPLOAD ROUTE
-// Returns only the relative path so it works across all devices (mobile, web, etc.)
+// Returns a fully embedded Base64 string so images survive across all devices and serverless instances
 app.post("/api/upload", upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
     }
-    // Store relative path — transformImageUrl will resolve to full URL on every GET
-    const imageUrl = `/uploads/${req.file.filename}`;
-    res.json({ imageUrl });
+
+    try {
+        const fileData = fs.readFileSync(req.file.path);
+        const base64Str = `data:${req.file.mimetype};base64,` + fileData.toString('base64');
+
+        // Clean up the temporary local file as it's now securely in the database pipeline
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
+
+        res.json({ imageUrl: base64Str });
+    } catch (err) {
+        res.status(500).json({ error: "Failed to process the visual asset." });
+    }
 });
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
