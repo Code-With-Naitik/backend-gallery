@@ -33,9 +33,11 @@ app.use(cors({
         if (!origin) return callback(null, true);
 
         const isVercel = origin.endsWith('.vercel.app');
+        const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
+        const isLAN = /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin); // allow any LAN IP:PORT
         const isAllowed = allowedOrigins.includes(origin);
 
-        if (isAllowed || isVercel) {
+        if (isAllowed || isVercel || isLocalhost || isLAN) {
             callback(null, true);
         } else {
             callback(new Error(`Not allowed by CORS: ${origin}`));
@@ -43,8 +45,8 @@ app.use(cors({
     },
     credentials: true,
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Ensure uploads directory exists
@@ -54,18 +56,8 @@ if (!fs.existsSync(uploadDir) && !process.env.VERCEL) {
 }
 // For Vercel, use /tmp if writing is necessary, but static uploads won't persist across requests.
 
-// Multer Config
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Vercel only allows writing to /tmp
-        const dest = process.env.VERCEL ? '/tmp' : 'uploads/';
-        cb(null, dest);
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
-});
-const upload = multer({ storage: storage });
+// Multer Config - Use memory storage for reliability (no disk read/write needed)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB limit
 
 // Connect to DB (don't block invocation if it fails)
 Connect_Db().catch(err => console.error("Initial DB connection failed:", err));
@@ -373,7 +365,7 @@ const transformImageUrl = (url, req) => {
         try { pathname = new URL(url).pathname; } catch { return url; }
     }
 
-    if (!pathname.startsWith('/uploads/')) {
+    if (!pathname.startsWith('/uploads/') || pathname.startsWith('data:')) {
         return url; // External URL or data URI, leave as-is
     }
 
@@ -389,7 +381,7 @@ app.get("/category", async (req, res) => {
     try {
         const categories = await Category.find();
         const transformedCategories = categories.map(cat => {
-            const obj = cat.toObject();
+            const obj = cat.toJSON();
             if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
             return obj;
         });
@@ -409,7 +401,7 @@ app.get("/category/:id", async (req, res) => {
         const category = await Category.findOne(query);
         if (!category) return res.status(404).json({ error: "Prompt not found" });
 
-        const obj = category.toObject();
+        const obj = category.toJSON();
         if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
         res.status(200).json(obj);
     } catch (error) {
@@ -480,7 +472,7 @@ app.get("/wishlist", authenticateToken, async (req, res) => {
 
         const transformedItems = (wishlist.items || []).map(item => {
             if (!item) return item;
-            const obj = typeof item.toObject === 'function' ? item.toObject() : item;
+            const obj = typeof item.toJSON === 'function' ? item.toJSON() : item;
             if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
             return obj;
         });
@@ -529,7 +521,7 @@ app.post("/wishlist/toggle", authenticateToken, async (req, res) => {
 
         const transformedItems = (updatedWishlist.items || []).map(item => {
             if (!item) return item;
-            const obj = typeof item.toObject === 'function' ? item.toObject() : item;
+            const obj = typeof item.toJSON === 'function' ? item.toJSON() : item;
             if (obj.imageUrl) obj.imageUrl = transformImageUrl(obj.imageUrl, req);
             return obj;
         });
@@ -562,12 +554,8 @@ app.post("/api/upload", upload.single('image'), (req, res) => {
     }
 
     try {
-        const fileData = fs.readFileSync(req.file.path);
-        const base64Str = `data:${req.file.mimetype};base64,` + fileData.toString('base64');
-
-        // Clean up the temporary local file as it's now securely in the database pipeline
-        try { fs.unlinkSync(req.file.path); } catch (e) { }
-
+        // File is in memory buffer - no disk read needed
+        const base64Str = `data:${req.file.mimetype};base64,` + req.file.buffer.toString('base64');
         res.json({ imageUrl: base64Str });
     } catch (err) {
         res.status(500).json({ error: "Failed to process the visual asset." });
