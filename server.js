@@ -33,7 +33,7 @@ app.use(cors({
 
         const isVercel = origin.endsWith('.vercel.app');
         const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
-        const isLAN = /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin); // allow any LAN IP:PORT
+        const isLAN = /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)\d+\.\d+(:\d+)?$/.test(origin); // allow any private LAN IP:PORT
         const isAllowed = allowedOrigins.includes(origin);
 
         if (isAllowed || isVercel || isLocalhost || isLAN) {
