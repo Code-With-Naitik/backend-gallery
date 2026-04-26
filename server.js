@@ -20,10 +20,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const allowedOrigins = [
     "http://localhost:5174",
-    "http://192.168.29.213:5174",
+    "http://10.31.103.153:5174",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:3000",
     "https://frontend-gallery.vercel.app",
     "https://frontend-gallery-delta.vercel.app/"
 ];
@@ -421,9 +420,12 @@ app.post("/category", async (req, res) => {
     }
 });
 
-// UPDATE a category (Public for now)
-app.put("/category/:id", async (req, res) => {
+// UPDATE a category (Protected - Admin Only)
+app.put("/category/:id", authenticateToken, async (req, res) => {
     try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: "Access denied. Admins only." });
+        }
         const { title, imageUrl, prompt, tags, category, modelName } = req.body;
         const query = mongoose.Types.ObjectId.isValid(req.params.id)
             ? { _id: req.params.id }
@@ -443,9 +445,12 @@ app.put("/category/:id", async (req, res) => {
     }
 });
 
-// DELETE a category (Protected)
+// DELETE a category (Protected - Admin Only)
 app.delete("/category/:id", authenticateToken, async (req, res) => {
     try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: "Access denied. Admins only." });
+        }
         const query = mongoose.Types.ObjectId.isValid(req.params.id)
             ? { _id: req.params.id }
             : { cid: Number(req.params.id) };
@@ -562,8 +567,11 @@ app.post("/api/upload", upload.single('image'), (req, res) => {
     }
 });
 
+// Initialize Database Connection   
+Connect_Db();
+
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    const PORT = process.env.PORT || 8001;
+    const PORT = process.env.PORT || 8000;
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });
